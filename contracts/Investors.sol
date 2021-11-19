@@ -52,6 +52,8 @@ interface ERC20 {
      */
     function balanceOf(address account) external view returns (uint256);
 
+    function getMsgSender() external view returns (address);
+
     /**
      * @dev Moves `amount` tokens from the caller's account to `recipient`.
      *
@@ -159,18 +161,36 @@ contract Ownable {
 contract TokenTimelock is Ownable {
     using SafeMath for uint256;
 
+    enum TypeOfRound { 
+        SEED, 
+        PRIVATE, 
+        PUBLIC, 
+        TEAM, 
+        ADVISOR, 
+        COMMUNITY, 
+        ECOSYSTEM 
+    }
+
     uint256 constant public AMOUNT_PER_RELEASE_1 = 200000 *10**18;
     uint256 constant public AMOUNT_PER_RELEASE_2 = 400000 *10**18;
+    uint256 constant public AMOUNT_SEED_ROUND = 840000000 *10**18;
+    uint256 constant public AMOUNT_PRIVATE_ROUND = 2730000000 *10**18;
+    uint256 constant public AMOUNT_PUBLIC_ROUND = 210000000 *10**18;
+    uint256 constant public AMOUNT_TEAM_ROUND = 3780000000 *10**18;
+    uint256 constant public AMOUNT_ADVISOR_ROUND = 1680000000 *10**18;
+    uint256 constant public AMOUNT_COMMUNITY_ROUND = 4410000000 *10**18;
+    uint256 constant public AMOUNT_ECOSYSTEM_ROUND = 7350000000 *10**18;
 
     uint256 constant public PERIOD = 2592000; // 30 days
+    uint256 constant public PERIOD_FIRST_RELEASE = 5184000; // 30 days
     uint256 constant public START_TIME = 1631707200; // 12:00:00 GMT 15/9/2021
-    address public LOG_TOKEN = 0xa84DDBe12F49392bD4E42AdAd8AE42dA540AFC75;
+    address public MEWA_TOKEN = 0x4A6ab76A232eFe1E1359420afe86F1eBf21bD103;
 
     uint256 public lockToken = 10000 * 10**18;
     uint256 public nextRelease;
     uint256 public countRelease;
     address public beneficiary = 0x641edb57C4bE2fAF1b12d18DE62dB8b08F8251e2;
-    
+
     constructor() public {
         nextRelease = START_TIME + PERIOD.mul(countRelease);
     }
@@ -179,7 +199,15 @@ contract TokenTimelock is Ownable {
     * @dev Throws if called by any account other than the beneficiaries.
     */
     modifier onlyBeneficiary() {
-        require(owner() == beneficiary, "Ownable: caller is not the beneficiary");
+        require(isBeneficiary(), "Ownable: caller is not the beneficiary");
+        _;
+    }
+
+    /**
+     * @dev Throws if called by any account other than the owner.
+     */
+    modifier onlyOwner() {
+        require(isOwner(), "Ownable: caller is not the owner");
         _;
     }
 
@@ -193,28 +221,28 @@ contract TokenTimelock is Ownable {
             uint256 cliff = block.timestamp.sub(nextRelease).div(PERIOD) + 1;
             uint256 amount = AMOUNT_PER_RELEASE_1.mul(cliff);
             if (amount >= lockToken) {
-                ERC20(LOG_TOKEN).transfer(beneficiary, lockToken);
+                ERC20(MEWA_TOKEN).transfer(beneficiary, lockToken);
                 lockToken = 0;
             } else {
                 nextRelease = nextRelease + PERIOD.mul(cliff);
                 lockToken = lockToken.sub(amount);
-                ERC20(LOG_TOKEN).transfer(beneficiary, amount); 
+                ERC20(MEWA_TOKEN).transfer(beneficiary, amount); 
             }
             
             countRelease += cliff;
 
         } else {
-            require(ERC20(LOG_TOKEN).balanceOf(address(this)).sub(AMOUNT_PER_RELEASE_2) >= 0, "TokenTimelock: no tokens to release");
+            require(ERC20(MEWA_TOKEN).balanceOf(address(this)).sub(AMOUNT_PER_RELEASE_2) >= 0, "TokenTimelock: no tokens to release");
 
             uint256 cliff = block.timestamp.sub(nextRelease).div(PERIOD) + 1;
             uint256 amount = AMOUNT_PER_RELEASE_2.mul(cliff);
             if (amount >= lockToken) {
-                ERC20(LOG_TOKEN).transfer(beneficiary, lockToken);
+                ERC20(MEWA_TOKEN).transfer(beneficiary, lockToken);
                 lockToken = 0;
             } else {
                 nextRelease = nextRelease + PERIOD.mul(cliff);
                 lockToken = lockToken.sub(amount);
-                ERC20(LOG_TOKEN).transfer(beneficiary, amount); 
+                ERC20(MEWA_TOKEN).transfer(beneficiary, amount); 
             }
             
             countRelease += cliff;
@@ -240,6 +268,44 @@ contract TokenTimelock is Ownable {
     }
     
     function getBalance() public view returns (uint256) {
-        return ERC20(LOG_TOKEN).balanceOf(address(this));
+        return ERC20(MEWA_TOKEN).balanceOf(msg.sender);
+    }
+
+    function isBeneficiary() public view returns (bool) {
+        return msg.sender == beneficiary;
+    }
+
+    function transferFrom (address sender, address recipient, uint256 amount) external returns (bool) {
+        return ERC20(MEWA_TOKEN).transferFrom(sender, recipient, amount);
+    }
+
+    function getTotalSupply() public view returns (uint256) {
+        return ERC20(MEWA_TOKEN).totalSupply();
+    }
+
+    function getBalanceFromAddress(address from) public view returns (uint256) {
+        return ERC20(MEWA_TOKEN).balanceOf(from);
+    }
+
+    function getAddress() public view returns (address){
+        return msg.sender;
+    }
+
+    function getBalanceOfThisAddress() public view returns (uint256) {
+        return ERC20(MEWA_TOKEN).balanceOf(address(this));
+    }
+
+    function approve (address spender, uint256 amount) external returns (bool) {
+        return ERC20(MEWA_TOKEN).approve(spender, amount);
+    }
+
+    function allowance(address owner, address spender) external view returns (uint256) {
+        return ERC20(MEWA_TOKEN).allowance(owner, spender);
+    }
+
+    function isValidType(TypeOfRound typeOfRound) public view returns (string memory) {
+        if (TypeOfRound.SEED == typeOfRound) return "SEED";
+        if (TypeOfRound.PRIVATE == typeOfRound) return "PRIVATE";
+        return "";
     }
 }
