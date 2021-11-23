@@ -161,15 +161,7 @@ contract Ownable {
 contract TokenTimelock is Ownable {
     using SafeMath for uint256;
 
-    enum TypeOfRound { 
-        SEED, 
-        PRIVATE, 
-        PUBLIC, 
-        TEAM, 
-        ADVISOR, 
-        COMMUNITY, 
-        ECOSYSTEM 
-    }
+    string[7] private TYPE_OF_ROUND = ["SEED", "PRIVATE", "PUBLIC", "TEAM", "ADVISOR", "COMMUNITY", "ECOSYSTEM"];
 
     uint256 constant public AMOUNT_PER_RELEASE_1 = 200000 *10**18;
     uint256 constant public AMOUNT_PER_RELEASE_2 = 400000 *10**18;
@@ -190,6 +182,10 @@ contract TokenTimelock is Ownable {
     uint256 public nextRelease;
     uint256 public countRelease;
     address public beneficiary = 0x641edb57C4bE2fAF1b12d18DE62dB8b08F8251e2;
+
+    mapping (string => address[]) private roundAddress;
+    mapping (address => uint256) private beneficiaryAllowances;
+    mapping (address => uint256) private beneficiaryClaim;
 
     constructor() public {
         nextRelease = START_TIME + PERIOD.mul(countRelease);
@@ -295,17 +291,29 @@ contract TokenTimelock is Ownable {
         return ERC20(MEWA_TOKEN).balanceOf(address(this));
     }
 
-    function approve (address spender, uint256 amount) external returns (bool) {
-        return ERC20(MEWA_TOKEN).approve(spender, amount);
+    function isValidType(string memory typeOfRound) public view returns (bool) {
+        bool isValid = false;
+    
+        for (uint i=0; i < TYPE_OF_ROUND.length; i++) {
+            if (keccak256(abi.encodePacked(typeOfRound)) == keccak256(abi.encodePacked(TYPE_OF_ROUND[i]))) {
+                isValid = true;
+            }
+        }
+        return isValid;
     }
 
-    function allowance(address owner, address spender) external view returns (uint256) {
-        return ERC20(MEWA_TOKEN).allowance(owner, spender);
+    function addAddressToRound(address _beneficiary, uint256 amount, string memory round) public onlyOwner {
+        require(isValidType(round), "Unlock: Round not found");
+        roundAddress[round].push(_beneficiary);
+        beneficiaryAllowances[_beneficiary] = amount;
     }
 
-    function isValidType(TypeOfRound typeOfRound) public view returns (string memory) {
-        if (TypeOfRound.SEED == typeOfRound) return "SEED";
-        if (TypeOfRound.PRIVATE == typeOfRound) return "PRIVATE";
-        return "";
+    function getListAddressByRound(string memory round) public view returns (address[] memory) {
+        require(isValidType(round), "Unlock: Round not found");
+        return roundAddress[round];
+    }
+
+    function getBeneficiaryAllowances(address _beneficiary) public view returns (uint256) {
+        return beneficiaryAllowances[_beneficiary];
     }
 }
