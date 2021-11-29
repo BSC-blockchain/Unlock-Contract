@@ -35,6 +35,12 @@ library SafeMath {
 
         return c;
     }
+
+    function mod(uint256 a, uint256 b) internal pure returns (uint256) {
+        require(b != 0, "SafeMath: modulo by zero");
+        return a % b;
+    }
+
 }
 
 
@@ -181,7 +187,7 @@ contract TokenTimelock is Ownable {
     uint256 public lockToken = 10000 * 10**18;
     uint256 public nextRelease;
     uint256 public countRelease;
-    address public beneficiary = 0x641edb57C4bE2fAF1b12d18DE62dB8b08F8251e2;
+    address[] public beneficiaryList;
 
     mapping (string => address[]) private roundAddress;
     mapping (address => uint256) private beneficiaryAllowances;
@@ -210,40 +216,10 @@ contract TokenTimelock is Ownable {
     /**
      * @notice Transfers tokens held by timelock to beneficiary.
      */
-    function release() public onlyBeneficiary {
+    function release() public onlyOwner {
         require(block.timestamp >= START_TIME + PERIOD.mul(countRelease), "TokenTimelock: current time is before release time");
-        
-        if (countRelease < 12) {
-            uint256 cliff = block.timestamp.sub(nextRelease).div(PERIOD) + 1;
-            uint256 amount = AMOUNT_PER_RELEASE_1.mul(cliff);
-            if (amount >= lockToken) {
-                ERC20(MEWA_TOKEN).transfer(beneficiary, lockToken);
-                lockToken = 0;
-            } else {
-                nextRelease = nextRelease + PERIOD.mul(cliff);
-                lockToken = lockToken.sub(amount);
-                ERC20(MEWA_TOKEN).transfer(beneficiary, amount); 
-            }
-            
-            countRelease += cliff;
-
-        } else {
-            require(ERC20(MEWA_TOKEN).balanceOf(address(this)).sub(AMOUNT_PER_RELEASE_2) >= 0, "TokenTimelock: no tokens to release");
-
-            uint256 cliff = block.timestamp.sub(nextRelease).div(PERIOD) + 1;
-            uint256 amount = AMOUNT_PER_RELEASE_2.mul(cliff);
-            if (amount >= lockToken) {
-                ERC20(MEWA_TOKEN).transfer(beneficiary, lockToken);
-                lockToken = 0;
-            } else {
-                nextRelease = nextRelease + PERIOD.mul(cliff);
-                lockToken = lockToken.sub(amount);
-                ERC20(MEWA_TOKEN).transfer(beneficiary, amount); 
-            }
-            
-            countRelease += cliff;
-        }
         uint256 cliff = block.timestamp.sub(nextRelease).div(PERIOD) + 1;
+        addAmount();
         countRelease += cliff;
     }
     
@@ -262,29 +238,13 @@ contract TokenTimelock is Ownable {
     function getBeneficiary() public view returns (address) {
         return beneficiary;
     }
-    
-    function getBalance() public view returns (uint256) {
-        return ERC20(MEWA_TOKEN).balanceOf(msg.sender);
-    }
 
     function isBeneficiary() public view returns (bool) {
         return msg.sender == beneficiary;
     }
 
-    function transferFrom (address sender, address recipient, uint256 amount) external returns (bool) {
-        return ERC20(MEWA_TOKEN).transferFrom(sender, recipient, amount);
-    }
-
-    function getTotalSupply() public view returns (uint256) {
-        return ERC20(MEWA_TOKEN).totalSupply();
-    }
-
     function getBalanceFromAddress(address from) public view returns (uint256) {
         return ERC20(MEWA_TOKEN).balanceOf(from);
-    }
-
-    function getAddress() public view returns (address){
-        return msg.sender;
     }
 
     function getBalanceOfThisAddress() public view returns (uint256) {
@@ -315,5 +275,92 @@ contract TokenTimelock is Ownable {
 
     function getBeneficiaryAllowances(address _beneficiary) public view returns (uint256) {
         return beneficiaryAllowances[_beneficiary];
+    }
+
+    function getBeneficiaryClaims(address _beneficiary) public view returns (uint256) {
+        return beneficiaryClaim[_beneficiary];
+    }
+
+    function getPercentSeedPrivateRound() private view returns (uint256) {
+        if (countRelease == 0)
+            return 8;
+
+        if (countRelease == 2) 
+            return 2;
+        
+        if(countRelease > 2 && countRelease <= 12)
+            return 9;
+
+        return 0;
+    }
+
+    function getPercentPublicRound() private view returns (uint256) {
+        if (countRelease == 0)
+            return 50;
+
+        if (countRelease > 1 && countRelease < 4)
+            return 25;
+
+        return 0;
+    }
+
+    function getPercentTeamRound() private view returns (uint256) {
+        if (countRelease > 0 && countRelease < 40)
+            return 25;
+
+        return 0;
+    }
+
+    function getPercentAdvisorRound() private view returns (uint256) {
+        if (countRelease == 0) {
+            return 10;
+        }
+        if (countRelease > 0 && countRelease.mod(3) == 0 && countRelease < 31)
+            return 3;
+
+        return 0;
+    }
+
+    function getPercentCommunityRound() private view returns (uint256) {
+        if (countRelease == 0)
+            return uint256(35)/uint256(2);
+
+        if (countRelease > 0 && countRelease < 25)
+            return uint256(33)/uint256(10);
+
+        return 0;
+    }
+
+    function getPercentEcosystemRound() private view returns (uint256) {
+        if (countRelease > 0 && countRelease < 25)
+            return 2;
+
+        return 0;
+    }
+
+    function addAmount() private {
+        for (uint i=0; i < TYPE_OF_ROUND.length; i++) {
+            bytes32 roundByte = keccak256(abi.encodePacked(TYPE_OF_ROUND[i]));
+            uint256 percent = 0;
+            if(keccak256(abi.encodePacked("SEED")) == roundByte) {
+                percent = getPercentSeedPrivateRound();
+            } else if (keccak256(abi.encodePacked("PRIVATE")) == roundByte){
+                percent = getPercentSeedPrivateRound();
+            } else if (keccak256(abi.encodePacked("PUBLIC")) == roundByte){
+                percent = getPercentPublicRound();
+            } else if (keccak256(abi.encodePacked("TEAM")) == roundByte){
+                percent = getPercentTeamRound();
+            } else if (keccak256(abi.encodePacked("ADVISOR")) == roundByte){
+                percent = getPercentAdvisorRound();
+            } else if (keccak256(abi.encodePacked("PUBLIC")) == roundByte){
+                percent = getPercentPublicRound();
+            } else if (keccak256(abi.encodePacked("ECOSYSTEM")) == roundByte){
+                percent = getPercentEcosystemRound();
+            }
+            for (uint j=0; j < roundAddress[TYPE_OF_ROUND[i]].length; j++) {
+                address _beneficiary = roundAddress[TYPE_OF_ROUND[i]][j];
+                beneficiaryClaim[_beneficiary] = beneficiaryAllowances[_beneficiary].mul(percent).div(100);
+            }
+        }
     }
 }
