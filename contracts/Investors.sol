@@ -169,17 +169,17 @@ contract TokenTimelock is Ownable {
 
     uint256 constant public PERIOD = 2592000; // 30 days
     uint256 constant public PERIOD_FIRST_RELEASE = 5184000; // 30 days
-    uint256 constant public START_TIME = 1631707200; // 12:00:00 GMT 15/9/2021
-    address public MEWA_TOKEN = 0x41434831C5cDB5769Dc3d2Ee1c0f8B5f5d861cAb;
+    uint256 constant public START_TIME = 1483228800; // 12:00:00 GMT 15/9/2021
+    address public MEWA_TOKEN = 0xCE3F1A7c3644Fa60A1bfdbd994598Fd0e63635ee;
 
-    uint256 public lockToken = 10000 * 10**18;
-    uint256 public nextRelease;
+    uint256 public nextRelease = 0;
     uint256 public countRelease;
     address[] public beneficiaryList;
 
     mapping (string => address[]) private roundAddress;
     mapping (address => uint256) private beneficiaryAllowances;
     mapping (address => uint256) private beneficiaryClaim;
+    mapping (address => uint256) private beneficiaryClaimed;
 
     constructor() public {
         nextRelease = START_TIME + PERIOD.mul(countRelease);
@@ -206,16 +206,16 @@ contract TokenTimelock is Ownable {
      */
     function release() public onlyOwner {
         require(block.timestamp >= START_TIME + PERIOD.mul(countRelease), "TokenTimelock: current time is before release time");
-        uint256 cliff = block.timestamp.sub(nextRelease).div(PERIOD) + 1;
+        // uint256 cliff = block.timestamp.sub(nextRelease).div(PERIOD) + 1;
         addAmount();
-        countRelease += cliff;
+        countRelease += 1;
     }
     
-    function getCurrentTime() public view returns(uint256) {
+    function getCurrentTime() public onlyOwner view returns(uint256) {
         return block.timestamp;
     }
 
-    function getCountRelease() public view returns(uint256) {
+    function getCountRelease() public onlyOwner view returns(uint256) {
         return countRelease;
     }
     
@@ -239,10 +239,6 @@ contract TokenTimelock is Ownable {
         return ERC20(MEWA_TOKEN).balanceOf(from);
     }
 
-    function getBalanceOfThisAddress() public view returns (uint256) {
-        return ERC20(MEWA_TOKEN).balanceOf(address(this));
-    }
-
     function isValidType(string memory typeOfRound) public view returns (bool) {
         bool isValid = false;
     
@@ -260,36 +256,33 @@ contract TokenTimelock is Ownable {
         beneficiaryAllowances[_beneficiary] = amount;
     }
 
-    function getListAddressByRound(string memory round) public view returns (address[] memory) {
+    function getListAddressByRound(string memory round) public onlyOwner view returns (address[] memory) {
         require(isValidType(round), "Unlock: Round not found");
         return roundAddress[round];
     }
 
-    function getBeneficiaryAllowances(address _beneficiary) public view returns (uint256) {
+    function getBeneficiaryAllowances(address _beneficiary) public onlyBeneficiary view returns (uint256) {
         return beneficiaryAllowances[_beneficiary];
     }
 
-    function getBeneficiaryClaims(address _beneficiary) public view returns (uint256) {
+    function getBeneficiaryClaims(address _beneficiary) public onlyBeneficiary view returns (uint256) {
         return beneficiaryClaim[_beneficiary];
     }
 
     function claim(address _beneficiary) public onlyBeneficiary {
         uint256 amount = beneficiaryClaim[_beneficiary];
-        require(ERC20(MEWA_TOKEN).transfer(_beneficiary, amount), "ERC20: Can not transfer amount");
-        beneficiaryAllowances[_beneficiary] -= amount;
+        uint256 amountTransfer = amount*10**18;
+        require(ERC20(MEWA_TOKEN).transfer(_beneficiary, amountTransfer), "ERC20: Can not transfer amount");
         beneficiaryClaim[_beneficiary] -= amount;
-        
+        beneficiaryClaimed[_beneficiary] += amount;
     }
 
-    function getPercentSeedPrivateRound() private view returns (uint256) {
+    function getPercentSeedRound() private view returns (uint256) {
         if (countRelease == 0)
-            return 8;
-
-        if (countRelease == 2) 
-            return 2;
+            return 5;
         
-        if(countRelease > 2 && countRelease <= 12)
-            return 9;
+        if(countRelease > 3 && countRelease <= 12)
+            return uint256(95)/uint256(9);
 
         return 0;
     }
@@ -361,9 +354,9 @@ contract TokenTimelock is Ownable {
             bytes32 roundByte = keccak256(abi.encodePacked(TYPE_OF_ROUND[i]));
             uint256 percent = 0;
             if(keccak256(abi.encodePacked("SEED")) == roundByte) {
-                percent = getPercentSeedPrivateRound();
+                percent = getPercentSeedRound();
             } else if (keccak256(abi.encodePacked("PRIVATE")) == roundByte){
-                percent = getPercentSeedPrivateRound();
+                percent = getPercentPrivateRound();
             } else if (keccak256(abi.encodePacked("PUBLIC")) == roundByte){
                 percent = getPercentPublicRound();
             } else if (keccak256(abi.encodePacked("TEAM")) == roundByte){
